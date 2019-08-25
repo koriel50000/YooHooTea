@@ -4,13 +4,13 @@ import android.graphics.Bitmap;
 
 import com.github.bassaer.chatmessageview.model.IChatUser;
 
-public class ChatUser implements IChatUser {
+public class User implements IChatUser {
 
     private String id;
     private String name;
     private Bitmap icon;
 
-    public ChatUser(int id, String name, Bitmap icon) {
+    public User(int id, String name, Bitmap icon) {
         this.id = String.valueOf(id);
         this.name = name;
         this.icon = icon;
