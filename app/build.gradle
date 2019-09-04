@@ -28,4 +28,8 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 
     implementation 'com.github.bassaer:chatmessageview:1.8.7'
+
+    implementation 'ai.api:sdk:1.9.0@aar'
+    implementation 'commons-io:commons-io:2.3'
+    implementation 'com.google.code.gson:gson:2.3'
 }
