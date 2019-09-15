@@ -34,7 +34,7 @@ public class RecordingThread {
     private String commonRes = strEnvWorkSpace+ACTIVE_RES;   
     
     private SnowboyDetect detector = new SnowboyDetect(commonRes, activeModel);
-    private MediaPlayer player = new MediaPlayer();
+//    private MediaPlayer player = new MediaPlayer();
 
     public RecordingThread(Handler handler, AudioDataReceivedListener listener) {
         this.handler = handler;
@@ -43,12 +43,12 @@ public class RecordingThread {
         detector.SetSensitivity("0.6");
         //-detector.SetAudioGain(1);
         detector.ApplyFrontend(true);
-        try {
-            player.setDataSource(strEnvWorkSpace+"ding.wav");
-            player.prepare();
-        } catch (IOException e) {
-            Log.e(TAG, "Playing ding sound error", e);
-        }
+//        try {
+//            player.setDataSource(strEnvWorkSpace+"ding.wav");
+//            player.prepare();
+//        } catch (IOException e) {
+//            Log.e(TAG, "Playing ding sound error", e);
+//        }
     }
 
     private void sendMessage(MsgEnum what, Object obj){
@@ -137,7 +137,7 @@ public class RecordingThread {
             } else if (result > 0) {
                 sendMessage(MsgEnum.MSG_ACTIVE, null);
                 Log.i("Snowboy: ", "Hotword " + Integer.toString(result) + " detected!");
-                player.start();
+//                player.start();
             }
         }
 
