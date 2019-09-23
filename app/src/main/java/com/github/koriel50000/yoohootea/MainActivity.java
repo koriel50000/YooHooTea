@@ -373,12 +373,12 @@ public class MainActivity extends AppCompatActivity {
         private SoundChanges soundChanges = new SoundChanges()
                 .add(true, 5, 50)
                 .add(false, 5, 100)
-                .add(true, 5, 20);
+                .add(true, 10, 20);
 
         private AIService aiService;
 
         private SpeechTask(Context context) {
-            final AIConfiguration config = new AIConfiguration(
+            AIConfiguration config = new AIConfiguration(
                     "6cab6813dc8c416f92c3c2e2b4a7bc27",
                     AIConfiguration.SupportedLanguages.fromLanguageTag("ja"),
                     AIConfiguration.RecognitionEngine.System);
@@ -444,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onListeningCanceled() {
             Log.d(TAG, "onListeningCanceled");
-            aiService.stopListening();
+            aiService.stopListening(); // FIXME 必要？
             speechRecognitionCanceled();
         }
 
@@ -459,7 +459,7 @@ public class MainActivity extends AppCompatActivity {
 
         private ChatbotTask(Context context) {
             AIConfiguration config = new AIConfiguration(
-                    "8dea1dbf4d4d4263a72f1b27f248eeb1",
+                    Constants.DIALOGFLOW_CLIENT_ACCESS_TOKEN,
                     AIConfiguration.SupportedLanguages.fromLanguageTag("ja"),
                     AIConfiguration.RecognitionEngine.System);
 
@@ -482,7 +482,7 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         return aiService.textRequest(params[0], null);
                     } catch (Exception e) {
-                        cancel(true);
+                        cancel(true); // FIXME cancel後にonErrorは呼ばれないのでは？
                         return null;
                     }
                 }
