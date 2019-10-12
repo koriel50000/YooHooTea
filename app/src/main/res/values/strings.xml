@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">YooHooTea</string>
+    <string name="menu_settings">設定</string>
+
+    <!-- Menu Titles -->
+
+    <!-- Preference Titles -->
+    <string name="account_header">アカウント</string>
+    <string name="tweet_header">ツイート</string>
+
+    <!-- Account Preferences -->
+    <string name="login_twitter">Twitterでログイン</string>
+    <string name="logout_twitter">認証を削除</string>
+    <string name="gender_title">性別</string>
+    <string name="location_title">住まい</string>
+
 </resources>

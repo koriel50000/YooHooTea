@@ -1,0 +1,29 @@
+<resources>
+    <!-- Gender Preference -->
+    <string-array name="gender_entries">
+        <item>ないしょ</item>
+        <item>女性</item>
+        <item>男性</item>
+    </string-array>
+
+    <string-array name="gender_values">
+        <item>other</item>
+        <item>female</item>
+        <item>male</item>
+    </string-array>
+
+    <!-- Location Preference -->
+    <string-array name="location_entries">
+        <item>ないしょ</item>
+        <item>沖縄</item>
+        <item>北海道</item>
+        <item>横浜</item>
+    </string-array>
+
+    <string-array name="location_values">
+        <item>somewhere</item>
+        <item>okinawa</item>
+        <item>hokkaido</item>
+        <item>yokohama</item>
+    </string-array>
+</resources>
