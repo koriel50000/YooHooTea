@@ -16,11 +16,21 @@
         android:theme="@style/AppTheme">
         <activity
             android:name=".SettingsActivity"
-            android:label="@string/menu_settings"
+            android:launchMode="singleTask"
+            android:label="@string/activity_settings"
             android:parentActivityName=".MainActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value="com.github.koriel50000.yoohootea.MainActivity" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="authorize"
+                    android:scheme="example" />
+            </intent-filter>
         </activity>
         <activity android:name=".MainActivity">
             <intent-filter>

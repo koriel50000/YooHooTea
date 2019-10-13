@@ -2,6 +2,7 @@ package com.github.koriel50000.yoohootea;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioManager;
@@ -16,6 +17,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.preference.PreferenceManager;
 
 import com.github.bassaer.chatmessageview.model.Message;
 import com.github.bassaer.chatmessageview.view.MessageView;
@@ -35,6 +37,8 @@ import ai.kitt.snowboy.AppResCopy;
 import ai.kitt.snowboy.MsgEnum;
 import ai.kitt.snowboy.audio.AudioDataSaver;
 import ai.kitt.snowboy.audio.RecordingThread;
+import twitter4j.Twitter;
+import twitter4j.auth.AccessToken;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -57,11 +61,12 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        speechTask = new SpeechTask(this);
-        chatbotTask = new ChatbotTask(this);
-
+        initPreferences();
         initMessageView();
         initTextToSpeech();
+
+        speechTask = new SpeechTask(this);
+        chatbotTask = new ChatbotTask(this);
 
         setProperVolume();
         AppResCopy.copyResFromAssetsToSD(this);
@@ -115,6 +120,15 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
+        }
+    }
+
+    private void initPreferences() {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        String token = sharedPreferences.getString("oauth_token", "");
+        String tokenSecret = sharedPreferences.getString("oauth_token_secret", "");
+        if (!token.equals("") && !tokenSecret.equals("")) {
+            TwitterUtils.setAccessToken(new AccessToken(token, tokenSecret));
         }
     }
 
@@ -472,70 +486,45 @@ public class MainActivity extends AppCompatActivity {
         public void onListeningFinished() { }
     }
 
-    private class ChatbotTask implements AIListener {
+    private class ChatbotTask {
 
-        private AIService aiService;
-        private AsyncTask<String, Void, AIResponse> task;
+        private AsyncTask<String, Void, twitter4j.Status> task;
 
         private ChatbotTask(Context context) {
-            AIConfiguration config = new AIConfiguration(
-                    Constants.DIALOGFLOW_CLIENT_ACCESS_TOKEN,
-                    AIConfiguration.SupportedLanguages.fromLanguageTag("ja"),
-                    AIConfiguration.RecognitionEngine.System);
-
-            aiService = AIService.getService(context, config);
-            aiService.setListener(this);
         }
 
         private void pause() {
-            aiService.pause();
         }
 
         private void resume() {
-            aiService.resume();
         }
 
-        private void execute(String query) {
-            task = new AsyncTask<String, Void, AIResponse>() {
+        private void execute(String speech) {
+            task = new AsyncTask<String, Void, twitter4j.Status>() {
                 @Override
-                protected AIResponse doInBackground(String... params) {
+                protected twitter4j.Status doInBackground(String... params) {
                     try {
-                        return aiService.textRequest(params[0], null);
+                        Twitter twitter = TwitterUtils.getInstance();
+                        twitter4j.Status status = twitter.updateStatus(params[0]);
+                        Log.d(TAG, status.toString());
+                        return status;
                     } catch (Exception e) {
+                        Log.e(TAG, e.getMessage(), e);
                         cancel(true); // FIXME cancel後にonErrorは呼ばれないのでは？
+                        chatbotResponseFailed();
                         return null;
                     }
                 }
 
                 @Override
-                protected void onPostExecute(AIResponse response) {
-                    Result result = response.getResult();
-                    String speech = result.getFulfillment().getSpeech();
-                    chatbotResponsed(speech);
+                protected void onPostExecute(twitter4j.Status status) {
+                    if (status != null) {
+                        String speech = status.getUser().getScreenName();
+                        chatbotResponsed(speech);
+                    }
                 }
             };
-            task.execute(query);
+            task.execute(speech);
         }
-
-        @Override
-        public void onResult(AIResponse result) { }
-
-        @Override
-        public void onError(AIError error) {
-            Log.e(TAG, error.getMessage());
-            chatbotResponseFailed();
-        }
-
-        @Override
-        public void onAudioLevel(float level) { }
-
-        @Override
-        public void onListeningStarted() { }
-
-        @Override
-        public void onListeningCanceled() { }
-
-        @Override
-        public void onListeningFinished() { }
     }
 }

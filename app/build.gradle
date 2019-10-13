@@ -34,4 +34,6 @@ dependencies {
     implementation 'ai.api:sdk:1.9.0@aar'
     implementation 'commons-io:commons-io:2.3'
     implementation 'com.google.code.gson:gson:2.3'
+
+    implementation 'org.twitter4j:twitter4j-core:4.0.7'
 }

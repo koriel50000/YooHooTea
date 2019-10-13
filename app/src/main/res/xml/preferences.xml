@@ -20,7 +20,7 @@
 
         <Preference app:title="@string/login_twitter"
             app:key="twitter_login"
-            app:summary="@katsusaburo"/>
+            app:summary="" />
 
         <Preference app:title="@string/logout_twitter"
             app:key="twitter_logout"
