@@ -3,8 +3,11 @@ package com.github.koriel50000.yoohootea;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Icon;
 import android.media.AudioManager;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -21,23 +24,41 @@ import androidx.preference.PreferenceManager;
 
 import com.github.bassaer.chatmessageview.model.Message;
 import com.github.bassaer.chatmessageview.view.MessageView;
+import com.squareup.picasso.Picasso;
+import com.squareup.picasso.Target;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import ai.api.AIConfiguration;
 import ai.api.AIListener;
 import ai.api.AIService;
 import ai.api.model.AIError;
 import ai.api.model.AIResponse;
-import ai.api.model.Result;
 import ai.kitt.snowboy.AppResCopy;
 import ai.kitt.snowboy.MsgEnum;
 import ai.kitt.snowboy.audio.AudioDataSaver;
 import ai.kitt.snowboy.audio.RecordingThread;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import twitter4j.FilterQuery;
+import twitter4j.Paging;
+import twitter4j.Query;
+import twitter4j.QueryResult;
+import twitter4j.Status;
+import twitter4j.StatusAdapter;
 import twitter4j.Twitter;
+import twitter4j.TwitterException;
+import twitter4j.TwitterStream;
 import twitter4j.auth.AccessToken;
 
 public class MainActivity extends AppCompatActivity {
@@ -52,7 +73,9 @@ public class MainActivity extends AppCompatActivity {
     private RecordingThread recordingThread;
 
     private SpeechTask speechTask;
-    private ChatbotTask chatbotTask;
+    private TweetTask tweetTask;
+    private ReplyTask replyTask;
+    private TimelineTask timelineTask;
 
     private TextToSpeech textToSpeech;
 
@@ -66,7 +89,9 @@ public class MainActivity extends AppCompatActivity {
         initTextToSpeech();
 
         speechTask = new SpeechTask(this);
-        chatbotTask = new ChatbotTask(this);
+        tweetTask = new TweetTask();
+        replyTask = new ReplyTask();
+        timelineTask = new TimelineTask();
 
         setProperVolume();
         AppResCopy.copyResFromAssetsToSD(this);
@@ -81,7 +106,9 @@ public class MainActivity extends AppCompatActivity {
         // use this method to disconnect from speech recognition service
         // Not destroying the SpeechRecognition object in onPause method would block other apps from using SpeechRecognition service
         speechTask.pause();
-        chatbotTask.pause();
+        tweetTask.pause();
+        replyTask.pause();
+        timelineTask.pause();
 
         recordingThread.stopRecording();
     }
@@ -92,7 +119,9 @@ public class MainActivity extends AppCompatActivity {
 
         // use this method to reinit connection to recognition service
         speechTask.resume();
-        chatbotTask.resume();
+        tweetTask.resume();
+        replyTask.resume();
+        timelineTask.resume();
 
         recordingThread.startRecording();
     }
@@ -127,15 +156,19 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         String token = sharedPreferences.getString("oauth_token", "");
         String tokenSecret = sharedPreferences.getString("oauth_token_secret", "");
+        long userId = Long.parseLong(sharedPreferences.getString("user_id", "0"));
+        String screenName = sharedPreferences.getString("screen_name", ""); // FIXME screenNameの変更に対応できない
         if (!token.equals("") && !tokenSecret.equals("")) {
-            TwitterUtils.setAccessToken(new AccessToken(token, tokenSecret));
+            TwitterUtils.initialize(token, tokenSecret, userId, screenName);
         }
     }
 
     private void initMessageView() {
-        Bitmap icon = BitmapFactory.decodeResource(getResources(), R.drawable.ic_action_user);
-        myAccount = new User(0, "koriel", icon);
-        yooHooBot = new User(1, "YooHoo", icon);
+        String screenName = TwitterUtils.getScreenName();
+        String url = "https://pbs.twimg.com/profile_images/1185423827125161984/yMLq3Qln_normal.jpg";
+        // FIXME url
+        myAccount = new User(this, 0, screenName, url); // FIXME 認証直後は反映されない
+        yooHooBot = new User(this, 1, "YooHoo");
 
         messageView = findViewById(R.id.message_view);
     }
@@ -146,8 +179,8 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 Message callMessage = new Message.Builder()
                         .setUser(user)
-                        .setRightMessage(isRight)
-                        .setMessageText(text)
+                        .setRight(isRight)
+                        .setText(text)
                         .build();
                 messageView.setMessage(callMessage);
                 messageView.scrollToEnd();
@@ -241,11 +274,11 @@ public class MainActivity extends AppCompatActivity {
         speechTask.startListening();
     }
 
-    private void speechRecognition(String query) {
-        String speech = "おーい " + query;
+    private void speechRecognition(String keyword) {
+        String speech = "おーい " + keyword;
         showMessage(myAccount, true, speech);
 
-        chatbotTask.execute(speech);
+        tweetTask.execute(speech, keyword);
     }
 
     private void speechRecognitionCanceled() {
@@ -258,15 +291,32 @@ public class MainActivity extends AppCompatActivity {
         recordingThread.startRecording();
     }
 
-    private void chatbotResponsed(String speech) {
+    private void tweetResponsed(Long statusId, String keyword) {
+        if (statusId != null) {
+            replyTask.execute(statusId, keyword);
+        } else {
+            String speech = "どうしたの？";
+            showMessage(yooHooBot, false, speech);
+
+            speechSynthesis(speech);
+        }
+    }
+
+    private void tweetResponseFailed() {
+        String speech = "なんですか？";
         showMessage(yooHooBot, false, speech);
 
         speechSynthesis(speech);
     }
 
-    private void chatbotResponseFailed() {
-        String speech = "ちょっと手が離せなくて";
+    private void replyResponsed(String speech) {
+        showMessage(yooHooBot, false, speech);
 
+        speechSynthesis(speech);
+    }
+
+    private void replyResponseFailed() {
+        String speech = "少し待てる？";
         showMessage(yooHooBot, false, speech);
 
         speechSynthesis(speech);
@@ -436,7 +486,6 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onResult(AIResponse response) {
-            Log.d(TAG, "onResult");
             speechRecognition(response.getResult().getResolvedQuery());
         }
 
@@ -448,25 +497,25 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onAudioLevel(float level) {
-            Log.d(TAG, String.format("onAudioLevel: %s", level));
+            //Log.d(TAG, String.format("onAudioLevel: %s", level));
 
             switch (soundChanges.level(level)) {
                 case CONTINUE:
-                    Log.d(TAG,"CONTINUE:");
+                    //Log.d(TAG,"CONTINUE:");
                     break;
                 case NEXT:
-                    Log.d(TAG,"NEXTSTATE:");
+                    //Log.d(TAG,"NEXTSTATE:");
                     break;
                 case SUFFICIENT:
-                    Log.d(TAG,"SUFFICIENT:");
+                    //Log.d(TAG,"SUFFICIENT:");
                     aiService.stopListening();
                     break;
                 case OUTOFRANGE:
-                    Log.d(TAG,"OUTOFRANGE:");
+                    //Log.d(TAG,"OUTOFRANGE:");
                     aiService.cancel();
                     break;
                 case TIMEOUT:
-                    Log.d(TAG,"TIMEOUT:");
+                    //Log.d(TAG,"TIMEOUT:");
                     aiService.cancel();
                     break;
             }
@@ -477,7 +526,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onListeningCanceled() {
-            Log.d(TAG, "onListeningCanceled");
+            //Log.d(TAG, "onListeningCanceled");
             aiService.stopListening(); // FIXME 必要？
             speechRecognitionCanceled();
         }
@@ -486,11 +535,20 @@ public class MainActivity extends AppCompatActivity {
         public void onListeningFinished() { }
     }
 
-    private class ChatbotTask {
+    private class TweetTask {
 
-        private AsyncTask<String, Void, twitter4j.Status> task;
+        private AsyncTask<Void, Void, Long> task;
 
-        private ChatbotTask(Context context) {
+        private Twitter twitter;
+
+        private String location;
+        private String gender;
+
+        private TweetTask() {
+            twitter = TwitterUtils.getInstance();
+            SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+            location = sharedPreferences.getString("location", "somewhere");
+            gender = sharedPreferences.getString("gender", "other");
         }
 
         private void pause() {
@@ -499,32 +557,245 @@ public class MainActivity extends AppCompatActivity {
         private void resume() {
         }
 
-        private void execute(String speech) {
-            task = new AsyncTask<String, Void, twitter4j.Status>() {
+        private void execute(final String speech, final String keyword) {
+            task = new AsyncTask<Void, Void, Long>() {
                 @Override
-                protected twitter4j.Status doInBackground(String... params) {
+                protected Long doInBackground(Void... params) {
                     try {
-                        Twitter twitter = TwitterUtils.getInstance();
-                        twitter4j.Status status = twitter.updateStatus(params[0]);
-                        Log.d(TAG, status.toString());
-                        return status;
+                        Long duplicateId = getDuplicateTweet(speech);
+                        Log.d(TAG, "speech: " + speech + ", duplicateId: " + duplicateId);
+                        Long statusId;
+                        if (duplicateId == null) {
+                            statusId = tweet(speech);
+                        } else {
+                            statusId = retweet(duplicateId);
+                        }
+                        boolean retweeted = HttpUtils.requestToRetweet(statusId);
+                        Log.d(TAG, "statusId: " + statusId + ", retweeted: " + retweeted);
+                        return retweeted ? statusId : null;
                     } catch (Exception e) {
                         Log.e(TAG, e.getMessage(), e);
-                        cancel(true); // FIXME cancel後にonErrorは呼ばれないのでは？
-                        chatbotResponseFailed();
+                        cancel(true);
+                        tweetResponseFailed();
                         return null;
                     }
                 }
 
                 @Override
-                protected void onPostExecute(twitter4j.Status status) {
-                    if (status != null) {
-                        String speech = status.getUser().getScreenName();
-                        chatbotResponsed(speech);
+                protected void onPostExecute(Long statusId) {
+                    tweetResponsed(statusId, keyword);
+                }
+            };
+            task.execute();
+        }
+
+        private Long getDuplicateTweet(String speech) throws TwitterException {
+            String screenName = TwitterUtils.getScreenName();
+            Query searchQuery = new Query()
+                    .query("from:" + screenName)
+                    .resultType(Query.ResultType.recent)
+                    .lang("ja");
+            QueryResult result = twitter.search(searchQuery);
+            Long statusId = null;
+            for (Status status : result.getTweets()) {
+                // リツイートと引用リツイートを除外、本文が"『speech』"に後方一致
+                if (!status.isRetweet() && status.getQuotedStatus() == null &&
+                        status.getText().endsWith("『" + speech + "』"))
+                {
+                    statusId = status.getId();
+                    break;
+                }
+            }
+            return statusId;
+        }
+
+        private long tweet(String speech) throws TwitterException {
+            Log.d(TAG, "gender: " + gender + ", location: " + location);
+            String message = "北海道のおばあちゃんがつぶやいてます。\n"
+                    + "『" + speech + "』";
+            twitter4j.Status status = twitter.updateStatus(message);
+            Log.d(TAG, "tweet: " + status.toString());
+            return status.getId();
+        }
+
+        private long retweet(long statusId) throws TwitterException {
+            twitter4j.Status status = twitter.retweetStatus(statusId);
+            Log.d(TAG, "retweet: " + status.toString());
+            return status.getId();
+        }
+    }
+
+    private class ReplyTask {
+
+        private AsyncTask<Void, Void, String> task;
+
+        private Twitter twitter;
+        private TwitterStream twitterStream;
+
+        private volatile long replyId;
+        private volatile String replyMessage;
+        private CountDownLatch latch;
+
+        private ReplyTask() {
+            twitter = TwitterUtils.getInstance();
+            twitterStream = TwitterUtils.getStreamInstance();
+        }
+
+        private void pause() {
+        }
+
+        private void resume() {
+        }
+
+        private void execute(final long tweetId, final String keyword) {
+            task = new AsyncTask<Void, Void, String>() {
+                @Override
+                protected String doInBackground(Void... params) {
+                    try {
+                        latch = new CountDownLatch(2);
+
+                        long userId = TwitterUtils.getUserId();
+                        startWaitingForReply(userId, tweetId);
+                        twitter4j.Status status = searchHashtag(keyword);
+
+                        latch.await(60, TimeUnit.SECONDS);
+
+                        if (replyMessage == null && status != null) {
+                            replyId = status.getId();
+                            replyMessage = status.getText();
+                        }
+                        if (replyMessage != null) {
+                            quotedRetweet(replyId, keyword);
+                        } else {
+                            replyMessage = "今、手が離せなくて。";
+                        }
+                        return replyMessage;
+                    } catch (Exception e) {
+                        Log.e(TAG, e.getMessage(), e);
+                        cancel(true);
+                        replyResponseFailed();
+                        return null;
+                    } finally {
+                        twitterStream.shutdown();
+                    }
+                }
+
+                @Override
+                protected void onPostExecute(String speech) {
+                    replyResponsed(speech);
+                }
+            };
+            task.execute();
+        }
+
+        private void startWaitingForReply(long followId, final long tweetId) {
+            twitterStream.addListener(new StatusAdapter() {
+                @Override
+                public void onStatus(Status status) {
+                    if (status.getInReplyToStatusId() == tweetId) {
+                        boolean result = HttpUtils.requestToReview(status.getText());
+                        if (result) {
+                            replyId = status.getId();
+                            replyMessage = status.getText();
+                            latch.countDown();
+                        }
+                    }
+                }
+
+                @Override
+                public void onException(Exception e) {
+                    Log.e(TAG, e.getMessage(), e);
+                    latch.countDown();
+                }
+            });
+            FilterQuery filterQuery = new FilterQuery()
+                    .follow(followId)
+                    .language("ja");
+            twitterStream.filter(filterQuery);
+        }
+
+        private Status searchHashtag(String keyword) throws TwitterException {
+            Query searchQuery = new Query()
+                    .query("to:yoohootea #おーい #" + keyword)
+                    .resultType(Query.ResultType.mixed)
+                    .lang("ja");
+            QueryResult result = twitter.search(searchQuery);
+            int count = result.getCount();
+            Status status = null;
+            if (count > 0) {
+                int index = new Random().nextInt(count);
+                status = result.getTweets().get(index);
+                Log.d(TAG, "search: " + status.toString());
+            }
+            return status;
+        }
+
+        private void quotedRetweet(long replyId, String keyword) throws TwitterException {
+            // TODO 引用リツイートの方法は？
+            twitter.retweetStatus(replyId);
+        }
+    }
+
+    private class TimelineTask {
+
+        private Twitter twitter;
+        private String screenName;
+
+        private Handler handler;
+        private Runnable runnable;
+        private volatile boolean alive;
+
+        private TimelineTask() {
+            twitter = TwitterUtils.getInstance();
+            screenName = TwitterUtils.getScreenName();
+            handler = new Handler();
+            runnable = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        schedule();
+                    } catch (Exception e) {
+                        Log.e(TAG, e.getMessage(), e);
                     }
                 }
             };
-            task.execute(speech);
+        }
+
+        private void pause() {
+        }
+
+        private void resume() {
+        }
+
+        private void schedule() throws TwitterException, InterruptedException {
+            while (alive) {
+                long sinceId = 0L; // TODO 保存から取得
+                Paging paging = new Paging().sinceId(sinceId);
+                for (Status status : twitter.getUserTimeline(screenName, paging)) {
+                    long replyId = status.getInReplyToStatusId();
+                    Status replyStatus = twitter.showStatus(replyId);
+                    // TODO リプライの本文がおーい○○
+                    if (replyStatus.getText().endsWith("")) {
+                        String query = "";
+
+                    }
+                    sinceId = status.getId();
+                    // TODO sinceIdを保存
+                    Thread.sleep(2 * 1000);
+                }
+            }
+            handler.postDelayed(runnable, 120 * 1000);
+        }
+
+        private void start() {
+            if (!alive) {
+                alive = true;
+                handler.post(runnable);
+            }
+        }
+
+        private void stop() {
+            alive = false;
         }
     }
 }

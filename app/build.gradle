@@ -5,7 +5,7 @@ android {
     buildToolsVersion "29.0.2"
     defaultConfig {
         applicationId "com.github.koriel50000.yoohootea"
-        minSdkVersion 19
+        minSdkVersion 22
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
@@ -29,11 +29,15 @@ dependencies {
     androidTestImplementation 'androidx.test:runner:1.2.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 
-    implementation 'com.github.bassaer:chatmessageview:1.8.7'
+    implementation 'com.github.bassaer:chatmessageview:1.10.0'
 
     implementation 'ai.api:sdk:1.9.0@aar'
-    implementation 'commons-io:commons-io:2.3'
-    implementation 'com.google.code.gson:gson:2.3'
+    implementation 'commons-io:commons-io:2.6'
+    implementation 'com.google.code.gson:gson:2.8.6'
 
     implementation 'org.twitter4j:twitter4j-core:4.0.7'
+    implementation 'org.twitter4j:twitter4j-stream:4.0.7'
+
+    implementation 'com.squareup.okhttp3:okhttp:3.12.6'
+    implementation 'com.squareup.picasso:picasso:2.5.2'
 }

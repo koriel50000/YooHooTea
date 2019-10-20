@@ -7,12 +7,15 @@ import android.util.Log;
 import twitter4j.Twitter;
 import twitter4j.TwitterException;
 import twitter4j.TwitterFactory;
+import twitter4j.TwitterStream;
+import twitter4j.TwitterStreamFactory;
 import twitter4j.auth.AccessToken;
 import twitter4j.auth.RequestToken;
 
 public class TwitterUtils {
 
     private static AccessToken accessToken; // FIXME twitterを保持したいが…
+    private static String screenName;
 
     public static Twitter getInstance() {
         Twitter twitter = new TwitterFactory().getInstance();
@@ -25,16 +28,34 @@ public class TwitterUtils {
         return twitter;
     }
 
+    public static TwitterStream getStreamInstance() {
+        TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
+        twitterStream.setOAuthConsumer(
+                Constants.TWITTER_CONSUMER_KEY,
+                Constants.TWITTER_CONSUMER_KEY);
+        if (accessToken != null) {
+            twitterStream.setOAuthAccessToken(accessToken);
+        }
+        return twitterStream;
+    }
+
+    public static void initialize(String token, String tokenSecret,
+                                  long userId, String initScreenName)
+    {
+        accessToken = new AccessToken(token, tokenSecret, userId);
+        screenName = initScreenName;
+    }
+
+    public static long getUserId() {
+        return accessToken.getUserId();
+    }
+
+    public static String getScreenName() {
+        return screenName;
+    }
+
     public static OAuthTask createOAuthTask(OAuthListener listener) {
         return new OAuthTask(listener);
-    }
-
-    public static AccessToken getAccessToken() {
-        return accessToken;
-    }
-
-    public static void setAccessToken(AccessToken initAccessToken) {
-        accessToken = initAccessToken;
     }
 
     public static class OAuthTask {

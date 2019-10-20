@@ -2,8 +2,6 @@
     <string name="app_name">YooHooTea</string>
     <string name="activity_settings">設定</string>
 
-    <!-- Menu Titles -->
-
     <!-- Preference Titles -->
     <string name="account_header">アカウント</string>
     <string name="tweet_header">ツイート</string>

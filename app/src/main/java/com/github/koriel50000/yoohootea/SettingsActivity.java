@@ -11,6 +11,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 
+import java.io.IOException;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Response;
 import twitter4j.auth.AccessToken;
 
 public class SettingsActivity extends AppCompatActivity implements TwitterUtils.OAuthListener {
@@ -45,8 +50,8 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
     }
 
     public void startOAuth(TwitterUtils.OAuthListener callback) {
-        oauthTask = TwitterUtils.createOAuthTask(this);
         oauthCallback = callback;
+        oauthTask = TwitterUtils.createOAuthTask(this);
 
         String callbackURL = "example://authorize";
         oauthTask.asyncRequestToken(callbackURL);
@@ -88,9 +93,8 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             SharedPreferences sharedPreferences = getPreferenceManager().getSharedPreferences();
             sharedPreferences.registerOnSharedPreferenceChangeListener(this);
 
-            String screenName = sharedPreferences.getString("twitter_login", "");
-            AccessToken accessToken = TwitterUtils.getAccessToken();
-            toggleAccountPreference(screenName, accessToken != null);
+            String loginName = sharedPreferences.getString("twitter_login", "");
+            toggleAccountPreference(loginName, !"".equals(loginName));
         }
 
         @Override
@@ -124,6 +128,7 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             Log.i(TAG, "onSharedPreferenceChanged key=" + key);
+            HttpUtils.requestToHello("Mike");
         }
 
         private void getAccessToken(final SharedPreferences sharedPreferences) {
@@ -131,16 +136,24 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             settingsActivity.startOAuth(new TwitterUtils.OAuthAdapter() {
                 @Override
                 public void onAccessTokenResult(AccessToken accessToken) {
-                    String screenName = "@" + accessToken.getScreenName();
                     SharedPreferences.Editor editor = sharedPreferences.edit();
-                    editor.putString("twitter_login", screenName);
-                    editor.putString("oauth_token", accessToken.getToken());
-                    editor.putString("oauth_token_secret", accessToken.getTokenSecret());
+                    String token = accessToken.getToken();
+                    String tokenSecret = accessToken.getTokenSecret();
+                    long userId = accessToken.getUserId();
+                    String screenName = accessToken.getScreenName();
+                    String loginName = "@" + screenName;
+                    editor.putString("twitter_login", loginName);
+                    editor.putString("oauth_token", token);
+                    editor.putString("oauth_token_secret", tokenSecret);
+                    editor.putString("user_id", String.valueOf(userId));
+                    editor.putString("screen_name", screenName);
                     editor.commit();
 
-                    TwitterUtils.setAccessToken(accessToken);
+                    String imageURL = HttpUtils.requestToRegister(userId);
 
-                    toggleAccountPreference(screenName, true);
+                    TwitterUtils.initialize(token, tokenSecret, userId, screenName);
+
+                    toggleAccountPreference(loginName, true);
                 }
             });
         }
@@ -150,16 +163,21 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             editor.remove("twitter_login");
             editor.remove("oauth_token");
             editor.remove("oauth_token_secret");
+            editor.remove("user_id");
+            editor.remove("screen_name");
             editor.commit();
 
-            TwitterUtils.setAccessToken(null);
+            long userId = TwitterUtils.getUserId();
+            HttpUtils.requestToUnregister(userId);
 
-            toggleAccountPreference("",false);
+            TwitterUtils.initialize("", "", 0, "");
+
+            toggleAccountPreference("", false);
         }
 
-        private void toggleAccountPreference(String screenName, boolean enabled) {
+        private void toggleAccountPreference(String loginName, boolean enabled) {
             Preference loginTwitter = (Preference) findPreference("twitter_login");
-            loginTwitter.setSummary(screenName);
+            loginTwitter.setSummary(loginName);
 
             Preference logoutTwitter = (Preference) findPreference("twitter_logout");
             logoutTwitter.setEnabled(enabled);
