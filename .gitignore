@@ -15,4 +15,6 @@ app/src/main/nodejs/webhook/node_modules/
 app/src/main/nodejs/webhook/config.json
 app/src/main/java/com/github/koriel50000/yoohootea/Constants.java
 app/src/main/nodejs/webhook/package-lock.json
-app/src/main/nodejs/webhook/.gcloudignore
+app/src/main/nodejs/mediator/node_modules/
+app/src/main/nodejs/mediator/config.json
+app/src/main/nodejs/mediator/package-lock.json
