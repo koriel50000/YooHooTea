@@ -11,11 +11,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 
-import java.io.IOException;
-
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Response;
 import twitter4j.auth.AccessToken;
 
 public class SettingsActivity extends AppCompatActivity implements TwitterUtils.OAuthListener {
@@ -128,7 +123,6 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             Log.i(TAG, "onSharedPreferenceChanged key=" + key);
-            HttpUtils.requestToHello("Mike");
         }
 
         private void getAccessToken(final SharedPreferences sharedPreferences) {
@@ -145,8 +139,9 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
                     editor.putString("twitter_login", loginName);
                     editor.putString("oauth_token", token);
                     editor.putString("oauth_token_secret", tokenSecret);
-                    editor.putString("user_id", String.valueOf(userId));
+                    editor.putLong("user_id", userId);
                     editor.putString("screen_name", screenName);
+                    editor.putLong("timeline_since_id", 1);
                     editor.commit();
 
                     String imageURL = HttpUtils.requestToRegister(userId);
@@ -165,6 +160,7 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             editor.remove("oauth_token_secret");
             editor.remove("user_id");
             editor.remove("screen_name");
+            editor.remove("timeline_since_id");
             editor.commit();
 
             long userId = TwitterUtils.getUserId();

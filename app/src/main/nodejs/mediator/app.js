@@ -149,9 +149,9 @@ async function friendships_destroy(user_id) {
   });
 }
 
-async function retweet(tweet_id) {
+async function retweet(status_id) {
   return new Promise((resolve, reject) => {
-    const params = { id: tweet_id  };
+    const params = { id: status_id  };
     client.post('statuses/retweet', params, (error, retweet, response) => {
       if (!error) {
         console.log(retweet);

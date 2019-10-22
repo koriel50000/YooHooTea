@@ -91,21 +91,18 @@ public class HttpUtils {
         }
     }
 
-    public static boolean requestToRetweet(final long tweetId) {
+    public static void requestToRetweetAsync(final long tweetId, Callback callback) {
         try {
             JsonRequest jsonRequest = new JsonRequest.Builder()
                     .api("retweet")
                     .addProperty("id_str", tweetId)
                     .build();
 
-            SyncCall syncCall = new SyncCall(client);
-            JsonResponse jsonResponse = syncCall.call(jsonRequest);
-
-            boolean result = jsonResponse.getBoolean("result");
-            return result;
+            Log.d(TAG, "requestToRetweetAsync - before");
+            client.newCall(jsonRequest.request()).enqueue(callback);
+            Log.d(TAG, "requestToRetweetAsync - after");
         } catch (Exception e) {
             Log.e(TAG, e.getMessage(), e);
-            return false;
         }
     }
 
@@ -239,7 +236,7 @@ public class HttpUtils {
         }
     }
 
-    private static class JsonResponse {
+    public static class JsonResponse {
 
         private JsonObject jsonObject;
 

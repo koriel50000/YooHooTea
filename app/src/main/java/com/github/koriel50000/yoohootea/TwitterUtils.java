@@ -4,6 +4,9 @@ import android.content.Intent;
 import android.os.AsyncTask;
 import android.util.Log;
 
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
+
 import twitter4j.Twitter;
 import twitter4j.TwitterException;
 import twitter4j.TwitterFactory;
@@ -52,6 +55,18 @@ public class TwitterUtils {
 
     public static String getScreenName() {
         return screenName;
+    }
+
+    public static String parseText(String text) {
+        StringBuilder result = new StringBuilder();
+        for (String value : text.split("[ \n]")) {
+            char ch = value.charAt(0);
+            if (ch == '@' || ch == '#') {
+                continue;
+            }
+            result.append(value);
+        }
+        return result.toString();
     }
 
     public static OAuthTask createOAuthTask(OAuthListener listener) {
