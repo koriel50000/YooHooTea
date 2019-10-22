@@ -130,23 +130,25 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             settingsActivity.startOAuth(new TwitterUtils.OAuthAdapter() {
                 @Override
                 public void onAccessTokenResult(AccessToken accessToken) {
-                    SharedPreferences.Editor editor = sharedPreferences.edit();
                     String token = accessToken.getToken();
                     String tokenSecret = accessToken.getTokenSecret();
                     long userId = accessToken.getUserId();
                     String screenName = accessToken.getScreenName();
                     String loginName = "@" + screenName;
+
+                    String imageURL = HttpUtils.requestToRegister(userId);
+
+                    SharedPreferences.Editor editor = sharedPreferences.edit();
                     editor.putString("twitter_login", loginName);
                     editor.putString("oauth_token", token);
                     editor.putString("oauth_token_secret", tokenSecret);
                     editor.putLong("user_id", userId);
                     editor.putString("screen_name", screenName);
                     editor.putLong("timeline_since_id", 1);
+                    editor.putString("profile_image_url", imageURL);
                     editor.commit();
 
-                    String imageURL = HttpUtils.requestToRegister(userId);
-
-                    TwitterUtils.initialize(token, tokenSecret, userId, screenName);
+                    TwitterUtils.initialize(token, tokenSecret, userId, screenName, imageURL);
 
                     toggleAccountPreference(loginName, true);
                 }
@@ -161,12 +163,13 @@ public class SettingsActivity extends AppCompatActivity implements TwitterUtils.
             editor.remove("user_id");
             editor.remove("screen_name");
             editor.remove("timeline_since_id");
+            editor.remove("profile_image_url");
             editor.commit();
 
             long userId = TwitterUtils.getUserId();
             HttpUtils.requestToUnregister(userId);
 
-            TwitterUtils.initialize("", "", 0, "");
+            TwitterUtils.initialize("", "", 0, "", "");
 
             toggleAccountPreference("", false);
         }

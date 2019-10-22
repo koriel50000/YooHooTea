@@ -19,6 +19,7 @@ public class TwitterUtils {
 
     private static AccessToken accessToken; // FIXME twitterを保持したいが…
     private static String screenName;
+    private static String profileImageURL;
 
     public static Twitter getInstance() {
         Twitter twitter = new TwitterFactory().getInstance();
@@ -43,10 +44,12 @@ public class TwitterUtils {
     }
 
     public static void initialize(String token, String tokenSecret,
-                                  long userId, String initScreenName)
+                                  long userId, String initScreenName,
+                                  String imageURL)
     {
         accessToken = new AccessToken(token, tokenSecret, userId);
         screenName = initScreenName;
+        profileImageURL = imageURL;
     }
 
     public static long getUserId() {
@@ -55,6 +58,10 @@ public class TwitterUtils {
 
     public static String getScreenName() {
         return screenName;
+    }
+
+    public static String getProfileImageURL() {
+        return profileImageURL;
     }
 
     public static String parseText(String text) {

@@ -3,6 +3,7 @@ package com.github.koriel50000.yoohootea;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.media.AudioManager;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -15,6 +16,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.github.bassaer.chatmessageview.model.Message;
@@ -61,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private MessageView messageView;
     private User myAccount;
     private User yooHooBot;
+    private User tweetBot;
 
     private int preVolume = -1;
     private RecordingThread recordingThread;
@@ -151,19 +154,29 @@ public class MainActivity extends AppCompatActivity {
         String tokenSecret = sharedPreferences.getString("oauth_token_secret", "");
         long userId = sharedPreferences.getLong("user_id", 0);
         String screenName = sharedPreferences.getString("screen_name", ""); // FIXME screenNameの変更に対応できない
+        String imageURL = sharedPreferences.getString("profile_image_url", "");
         if (!token.equals("") && !tokenSecret.equals("")) {
-            TwitterUtils.initialize(token, tokenSecret, userId, screenName);
+            TwitterUtils.initialize(token, tokenSecret, userId, screenName, imageURL);
         }
     }
 
     private void initMessageView() {
         String screenName = TwitterUtils.getScreenName();
-        String url = "https://pbs.twimg.com/profile_images/1185423827125161984/yMLq3Qln_normal.jpg";
-        // FIXME url
-        myAccount = new User(this, 0, screenName, url); // FIXME 認証直後は反映されない
+        String imageURL = TwitterUtils.getProfileImageURL();
+        myAccount = new User(this, 0, screenName, imageURL); // FIXME 認証直後は反映されない
         yooHooBot = new User(this, 1, "YooHoo");
+        tweetBot = new User(this, 2, "John Smith");
 
         messageView = findViewById(R.id.message_view);
+
+        messageView.setBackgroundColor(Color.rgb(121, 148, 191));
+        messageView.setLeftBubbleColor(Color.WHITE);
+        messageView.setRightBubbleColor(Color.rgb(155, 224,97));
+        messageView.setLeftMessageTextColor(Color.DKGRAY);
+        messageView.setRightMessageTextColor(Color.DKGRAY);
+        messageView.setUsernameTextColor(Color.WHITE);
+        messageView.setSendTimeTextColor(Color.WHITE);
+        messageView.setDateSeparatorTextColor(Color.WHITE);
     }
 
     private void showMessage(final User user, final boolean isRight, final String text) {
@@ -302,9 +315,16 @@ public class MainActivity extends AppCompatActivity {
         speechSynthesis(speech);
     }
 
-    private void replyResponsed(String speech) {
-        Log.d(TAG, "replyResponsed: " + speech);
-        showMessage(yooHooBot, false, speech);
+    private void replyResponsed(String speech, String screenName, String imageURL) {
+        Log.d(TAG, "replyResponsed: " + speech + " screenName: " + screenName +
+                " profileImageURL: " + imageURL);
+        if (!screenName.equals("")) {
+            tweetBot.setName(screenName);
+            tweetBot.setImageURL(this, imageURL);
+            showMessage(tweetBot, false, speech);
+        } else {
+            showMessage(yooHooBot, false, speech);
+        }
 
         speechSynthesis(speech);
     }
@@ -673,6 +693,8 @@ public class MainActivity extends AppCompatActivity {
         private Twitter twitter;
 
         private volatile String replyMessage;
+        private String screenName;
+        private String imageURL;
         private CountDownLatch latch;
 
         private ReplyTask() {
@@ -697,15 +719,19 @@ public class MainActivity extends AppCompatActivity {
                         latch = new CountDownLatch(1); // 本来は検索も非同期にしてカウントを2にすべき
 
                         startWaitingForReply(TwitterUtils.getUserId(), statusId);
-                        String searchText = searchNotHashtag(keyword); // ハッシュタグ検索がうまくいかないため緊急回避
+                        twitter4j.Status status = searchNotHashtag(keyword); // ハッシュタグ検索がうまくいかないため緊急回避
 
                         Log.d(TAG, "latch await - before");
                         latch.await(30, TimeUnit.SECONDS);
                         Log.d(TAG, "latch await - after: " + replyMessage);
 
-                        if (replyMessage == null && searchText != null) {
-                            replyMessage = searchText;
+                        if (replyMessage == null && status != null) {
+                            replyMessage = TwitterUtils.parseText(status.getText());
+                            screenName = status.getUser().getScreenName();
+                            imageURL = status.getUser().getProfileImageURL();
                         } else if (replyMessage == null) {
+                            screenName = "";
+                            imageURL = "";
                             replyMessage = "今、手が離せなくて。";
                         }
                         Log.d(TAG, "replyMessage: " + replyMessage);
@@ -724,7 +750,7 @@ public class MainActivity extends AppCompatActivity {
 
                 @Override
                 protected void onPostExecute(String speech) {
-                    replyResponsed(speech);
+                    replyResponsed(speech, screenName, imageURL);
                 }
 
                 private void startWaitingForReply(long followId, final long statusId) {
@@ -735,10 +761,10 @@ public class MainActivity extends AppCompatActivity {
                             if (status.getInReplyToStatusId() == statusId) {
                                 boolean result = true; //HttpUtils.requestToReview(status.getText());
                                 if (result) {
-                                    Log.d(TAG, "filter replied text: " + status.getText());
+                                    screenName = status.getUser().getScreenName();
+                                    imageURL = status.getUser().getProfileImageURL();
                                     replyMessage = TwitterUtils.parseText(status.getText());
                                     latch.countDown();
-                                    Log.d(TAG, "filter replied reply: " + replyMessage);
                                 }
                             }
                         }
@@ -759,7 +785,7 @@ public class MainActivity extends AppCompatActivity {
             task.execute();
         }
 
-        private String searchNotHashtag(String keyword) throws TwitterException {
+        private Status searchNotHashtag(String keyword) throws TwitterException {
             String screenName = TwitterUtils.getScreenName();
             Query searchQuery = new Query()
                     .query("to:" + screenName + " -filter:retweets")
@@ -768,7 +794,7 @@ public class MainActivity extends AppCompatActivity {
             QueryResult result = twitter.search(searchQuery);
             Log.d(TAG, "searchQuery: " + searchQuery +  " result count: " + result.getCount());
 
-            List<String> replies = new ArrayList<>();
+            List<Status> replies = new ArrayList<>();
             for (Status status : result.getTweets()) {
                 // リツイートと引用リツイートを除外
                 if (!status.isRetweet() && status.getQuotedStatus() == null) {
@@ -776,19 +802,19 @@ public class MainActivity extends AppCompatActivity {
                     Status replyStatus = twitter.showStatus(replyId);
                     // リプライ元の本文が『おーい keyword』に後方一致
                     if (replyStatus.getText().endsWith("『おーい " + keyword + "』")) {
-                        replies.add(TwitterUtils.parseText(status.getText()));
+                        replies.add(status);
                     }
                 }
             }
             Log.d(TAG, "replies count: " + replies.size());
 
-            String text = null;
+            Status status = null;
             if (replies.size() > 0) {
                 int index = new Random().nextInt(replies.size());
-                text = replies.get(index);
-                Log.d(TAG, "search tweet: " + text);
+                status = replies.get(index);
+                Log.d(TAG, "search tweet: " + status.getText());
             }
-            return text;
+            return status;
         }
     }
 

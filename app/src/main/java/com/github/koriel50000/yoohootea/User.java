@@ -21,7 +21,7 @@ public class User implements IChatUser {
         if (defaultIcon == null) {
             defaultIcon = BitmapFactory.decodeResource(
                     context.getResources(),
-                    R.drawable.ic_action_user);
+                    R.mipmap.ic_yoohoobot_round);
         }
         this.id = String.valueOf(id);
         this.name = name;
@@ -30,7 +30,13 @@ public class User implements IChatUser {
 
     public User(Context context, long id, String name, String url) {
         this(context, id, name);
-        Picasso.with(context).load(url).into(new Target() {
+        if (url != null && !url.equals("")) {
+            setImageURL(context, url);
+        }
+    }
+
+    public void setImageURL(Context context, String imageURL) {
+        Picasso.with(context).load(imageURL).into(new Target() {
             @Override
             public void onBitmapLoaded(Bitmap bitmap, Picasso.LoadedFrom from) {
                 icon = bitmap;
@@ -46,17 +52,6 @@ public class User implements IChatUser {
         });
     }
 
-    public User(int id, String name, Bitmap icon) {
-        this.id = String.valueOf(id);
-        this.name = name;
-        this.icon = icon;
-    }
-
-    @Override
-    public Bitmap getIcon() {
-        return icon;
-    }
-
     @Override
     public String getId() {
         return id;
@@ -68,6 +63,11 @@ public class User implements IChatUser {
     }
 
     public void setName(String name) { this.name = name; }
+
+    @Override
+    public Bitmap getIcon() {
+        return icon;
+    }
 
     @Override
     public void setIcon(Bitmap icon) {
