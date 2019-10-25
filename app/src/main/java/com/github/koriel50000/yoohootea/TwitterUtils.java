@@ -17,43 +17,59 @@ import twitter4j.auth.RequestToken;
 
 public class TwitterUtils {
 
-    private static AccessToken accessToken; // FIXME twitterを保持したいが…
+    private static Twitter twitter;
+    private static TwitterStream twitterStream;
+    private static long userId;
     private static String screenName;
     private static String profileImageURL;
 
     public static Twitter getInstance() {
-        Twitter twitter = new TwitterFactory().getInstance();
-        twitter.setOAuthConsumer(
-                Constants.TWITTER_CONSUMER_KEY,
-                Constants.TWITTER_CONSUMER_SECRET);
-        if (accessToken != null) {
-            twitter.setOAuthAccessToken(accessToken);
+        if (twitter == null) {
+            twitter = new TwitterFactory().getInstance();
+            twitter.setOAuthConsumer(
+                    Constants.TWITTER_CONSUMER_KEY,
+                    Constants.TWITTER_CONSUMER_SECRET);
         }
         return twitter;
     }
 
     public static TwitterStream getStreamInstance() {
-        TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
-        twitterStream.setOAuthConsumer(
-                Constants.TWITTER_CONSUMER_KEY,
-                Constants.TWITTER_CONSUMER_KEY);
-        if (accessToken != null) {
-            twitterStream.setOAuthAccessToken(accessToken);
+        if (twitterStream == null) {
+            twitterStream = new TwitterStreamFactory().getInstance();
+            twitterStream.setOAuthConsumer(
+                    Constants.TWITTER_CONSUMER_KEY,
+                    Constants.TWITTER_CONSUMER_KEY);
         }
         return twitterStream;
     }
 
     public static void initialize(String token, String tokenSecret,
-                                  long userId, String initScreenName,
+                                  long initUserId, String initScreenName,
                                   String imageURL)
     {
-        accessToken = new AccessToken(token, tokenSecret, userId);
+        if (!token.equals("") && !tokenSecret.equals("")) {
+            AccessToken accessToken = new AccessToken(token, tokenSecret);
+            getInstance().setOAuthAccessToken(accessToken);
+            getStreamInstance().setOAuthAccessToken(accessToken);
+        }
+        userId = initUserId;
         screenName = initScreenName;
         profileImageURL = imageURL;
     }
 
+    public static void destroy() {
+        twitter = null;
+        if (twitterStream != null) {
+            try {
+                twitterStream.shutdown();
+            } finally {
+                twitterStream = null;
+            }
+        }
+    }
+
     public static long getUserId() {
-        return accessToken.getUserId();
+        return userId;
     }
 
     public static String getScreenName() {

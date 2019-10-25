@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,11 +13,12 @@ import android.os.Handler;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.github.bassaer.chatmessageview.model.Message;
@@ -41,6 +43,7 @@ import ai.api.AIService;
 import ai.api.model.AIError;
 import ai.api.model.AIResponse;
 import ai.kitt.snowboy.AppResCopy;
+import ai.kitt.snowboy.Constants;
 import ai.kitt.snowboy.MsgEnum;
 import ai.kitt.snowboy.audio.AudioDataSaver;
 import ai.kitt.snowboy.audio.RecordingThread;
@@ -60,10 +63,16 @@ public class MainActivity extends AppCompatActivity {
 
     public static final String TAG = MainActivity.class.getName();
 
+    private static final String LIKE_TEXT = "\uD83D\uDC4D";
+    private static final String PHONE_TEXT = "\u260E";
+
     private MessageView messageView;
     private User myAccount;
     private User yooHooBot;
     private User tweetBot;
+
+    private Message currentMessage;
+    private LikeHandler likeHandler;
 
     private int preVolume = -1;
     private RecordingThread recordingThread;
@@ -74,6 +83,11 @@ public class MainActivity extends AppCompatActivity {
     private TimelineTask timelineTask;
 
     private TextToSpeech textToSpeech;
+
+    @Override
+    protected void onSaveInstanceState(Bundle savedInstanceState) {
+        super.onSaveInstanceState(savedInstanceState);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,6 +102,7 @@ public class MainActivity extends AppCompatActivity {
         tweetTask = new TweetTask();
         replyTask = new ReplyTask();
         timelineTask = new TimelineTask();
+        likeHandler = new LikeHandler();
 
         setProperVolume();
         AppResCopy.copyResFromAssetsToSD(this);
@@ -128,6 +143,8 @@ public class MainActivity extends AppCompatActivity {
         restoreVolume();
         textToSpeech.shutdown();
 
+        TwitterUtils.destroy();
+
         super.onDestroy();
     }
 
@@ -155,9 +172,8 @@ public class MainActivity extends AppCompatActivity {
         long userId = sharedPreferences.getLong("user_id", 0);
         String screenName = sharedPreferences.getString("screen_name", ""); // FIXME screenNameの変更に対応できない
         String imageURL = sharedPreferences.getString("profile_image_url", "");
-        if (!token.equals("") && !tokenSecret.equals("")) {
-            TwitterUtils.initialize(token, tokenSecret, userId, screenName, imageURL);
-        }
+
+        TwitterUtils.initialize(token, tokenSecret, userId, screenName, imageURL);
     }
 
     private void initMessageView() {
@@ -177,19 +193,35 @@ public class MainActivity extends AppCompatActivity {
         messageView.setUsernameTextColor(Color.WHITE);
         messageView.setSendTimeTextColor(Color.WHITE);
         messageView.setDateSeparatorTextColor(Color.WHITE);
+        messageView.setMessageMaxWidth(640);
     }
 
     private void showMessage(final User user, final boolean isRight, final String text) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                Message callMessage = new Message.Builder()
+                currentMessage = new Message.Builder()
                         .setUser(user)
                         .setRight(isRight)
                         .setText(text)
                         .build();
-                messageView.setMessage(callMessage);
+                messageView.setMessage(currentMessage);
                 messageView.scrollToEnd();
+            }
+        });
+    }
+
+    private void replaceMessage(final String text) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                messageView.remove(currentMessage);
+                currentMessage = new Message.Builder()
+                        .setUser(currentMessage.getUser())
+                        .setRight(currentMessage.isRight())
+                        .setText(text)
+                        .build();
+                messageView.setMessage(currentMessage);
             }
         });
     }
@@ -198,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
         AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         preVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int properVolume = (int) ((float) maxVolume * 0.2); // 適切な音量として最大音量の20%に設定
+        int properVolume = (int) ((float) maxVolume * 0.75); // 最大音量の50%に設定
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, properVolume, 0);
     }
 
@@ -275,6 +307,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void hotwordDetected() {
+        likeHandler.cancel();
+
         recordingThread.stopRecording();
 
         speechTask.startListening();
@@ -315,13 +349,18 @@ public class MainActivity extends AppCompatActivity {
         speechSynthesis(speech);
     }
 
-    private void replyResponsed(String speech, String screenName, String imageURL) {
-        Log.d(TAG, "replyResponsed: " + speech + " screenName: " + screenName +
-                " profileImageURL: " + imageURL);
+    private void replyResponsed(String speech, String screenName, String imageURL,
+                                long statusId , boolean favorited)
+    {
+        Log.d(TAG, "replyResponsed: " + speech + " screenName: " + screenName + " profileImageURL: " + imageURL);
         if (!screenName.equals("")) {
             tweetBot.setName(screenName);
             tweetBot.setImageURL(this, imageURL);
+            if (favorited) {
+                speech += LIKE_TEXT;
+            }
             showMessage(tweetBot, false, speech);
+            likeHandler.accept(statusId, favorited, 30 * 1000); // 30秒間受け付ける
         } else {
             showMessage(yooHooBot, false, speech);
         }
@@ -338,6 +377,137 @@ public class MainActivity extends AppCompatActivity {
 
     private void speakEnded() {
         recordingThread.startRecording();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        switch (e.getKeyCode()) {
+            case KeyEvent.KEYCODE_VOLUME_UP:
+                if (likeHandler.accepting() && e.getAction() == KeyEvent.ACTION_DOWN) {
+                    Log.d(TAG, "KEYCODE_VOLUME_UP");
+                    createFavorite();
+                }
+                return true;
+            case KeyEvent.KEYCODE_VOLUME_DOWN:
+                if (likeHandler.accepting() && e.getAction() == KeyEvent.ACTION_DOWN) {
+                    Log.d(TAG, "KEYCODE_VOLUME_DOWN");
+                    destroyFavorite();
+                }
+                return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private void createFavorite() {
+        new AsyncTask<Void, Void, Void>() {
+            @Override
+            protected Void doInBackground(Void... params) {
+                if (likeHandler.favorite()) {
+                    replaceMessage(currentMessage.getText() + LIKE_TEXT);
+                }
+                return null;
+            }
+        }.execute();
+    }
+
+    private void destroyFavorite() {
+        new AsyncTask<Void, Void, Void>() {
+            @Override
+            protected Void doInBackground(Void... params) {
+                if (likeHandler.unfavorite()) {
+                    String text = currentMessage.getText();
+                    if (text.endsWith(LIKE_TEXT)) {
+                        text = text.substring(0, text.length() - LIKE_TEXT.length());
+                        replaceMessage(text);
+                    }
+                }
+                return null;
+            }
+        }.execute();
+    }
+
+    private static class LikeHandler {
+
+        private Twitter twitter;
+
+        private Handler hander;
+        private Runnable runner;
+        private MediaPlayer likePlayer;
+
+        private long statusId;
+        private boolean favorited;
+
+        private volatile boolean accepting;
+
+        private LikeHandler() {
+            twitter = TwitterUtils.getInstance();
+            hander = new Handler();
+            runner = new Runnable() {
+                @Override
+                public void run() {
+                    accepting = false;
+                }
+            };
+            accepting = false;
+            initAudio();
+        }
+
+        private void initAudio() {
+            try {
+                likePlayer = new MediaPlayer();
+                likePlayer.setDataSource(Constants.DEFAULT_WORK_SPACE + "like.ogg");
+                likePlayer.prepare();
+            } catch (IOException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+        }
+
+        private boolean favorite() {
+            if (favorited) {
+                return false;
+            }
+            try {
+                Status status = twitter.createFavorite(statusId);
+                Log.d(TAG, status.toString());
+                favorited = status.getFavoriteCount() > 0;
+                likePlayer.start();
+                return true;
+            } catch (TwitterException e) {
+                Log.d(TAG, e.getMessage(), e);
+                return false;
+            }
+        }
+
+        private boolean unfavorite() {
+            if (!favorited) {
+                return false;
+            }
+            try {
+                Status status = twitter.destroyFavorite(statusId);
+                Log.d(TAG, status.toString());
+                favorited = status.getFavoriteCount() > 0;
+                return true;
+            } catch (TwitterException e) {
+                Log.d(TAG, e.getMessage(), e);
+                return false;
+            }
+        }
+
+        private void accept(long statusId, boolean favorited, long timeout) {
+            this.statusId = statusId;
+            this.favorited = favorited;
+            accepting = true;
+            hander.postDelayed(runner, timeout);
+        }
+
+        private void cancel() {
+            accepting = false;
+            hander.removeCallbacks(runner);
+        }
+
+        private boolean accepting() {
+            return accepting;
+        }
     }
 
     private static class SoundChanges {
@@ -562,7 +732,6 @@ public class MainActivity extends AppCompatActivity {
 
         private TweetTask() {
             twitter = TwitterUtils.getInstance();
-            initPhrase(); // FIXME ここだと起動時しか反映されない
         }
 
         private void initPhrase() {
@@ -602,6 +771,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void execute(final String speech, final String keyword) {
+            initPhrase(); // 仮に設定を毎回確認する
             task = new AsyncTask<Void, Void, Long>() {
                 @Override
                 protected Long doInBackground(Void... params) {
@@ -664,8 +834,8 @@ public class MainActivity extends AppCompatActivity {
 
             Long statusId = null;
             for (Status status : result.getTweets()) {
-                // 2時間以内、リツイートと引用リツイートを除外、本文が"『speech』"に後方一致
-                if (status.getCreatedAt().after(new Date(System.currentTimeMillis() - 2 * 60 * 60 * 1000)) &&
+                // 12時間以内、リツイートと引用リツイートを除外、本文が"『speech』"に後方一致
+                if (status.getCreatedAt().after(new Date(System.currentTimeMillis() - 12 * 60 * 60 * 1000)) &&
                         !status.isRetweet() && status.getQuotedStatus() == null &&
                         status.getText().endsWith("『" + speech + "』"))
                 {
@@ -691,14 +861,18 @@ public class MainActivity extends AppCompatActivity {
         private AsyncTask<Void, Void, String> task;
 
         private Twitter twitter;
+        private TwitterStream twitterStream;
 
         private volatile String replyMessage;
-        private String screenName;
-        private String imageURL;
+        private volatile long replyId;
+        private volatile String screenName;
+        private volatile String imageURL;
+        private volatile boolean favorited;
         private CountDownLatch latch;
 
         private ReplyTask() {
             twitter = TwitterUtils.getInstance();
+            twitterStream = TwitterUtils.getStreamInstance();
         }
 
         private void pause() {
@@ -709,29 +883,28 @@ public class MainActivity extends AppCompatActivity {
 
         private void execute(final long statusId, final String keyword) {
             task = new AsyncTask<Void, Void, String>() {
-                TwitterStream twitterStream;
-
                 @Override
                 protected String doInBackground(Void... params) {
                     try {
-                        twitterStream = TwitterUtils.getStreamInstance();
                         replyMessage = null;
                         latch = new CountDownLatch(1); // 本来は検索も非同期にしてカウントを2にすべき
 
                         startWaitingForReply(TwitterUtils.getUserId(), statusId);
                         twitter4j.Status status = searchNotHashtag(keyword); // ハッシュタグ検索がうまくいかないため緊急回避
 
-                        Log.d(TAG, "latch await - before");
-                        latch.await(30, TimeUnit.SECONDS);
-                        Log.d(TAG, "latch await - after: " + replyMessage);
+                        latch.await(30, TimeUnit.SECONDS); // 30秒以内
 
                         if (replyMessage == null && status != null) {
-                            replyMessage = TwitterUtils.parseText(status.getText());
+                            replyId = status.isFavorited() ? 0 : status.getId();
                             screenName = status.getUser().getScreenName();
                             imageURL = status.getUser().getProfileImageURL();
+                            favorited = status.getFavoriteCount() > 0;
+                            replyMessage = TwitterUtils.parseText(status.getText());
                         } else if (replyMessage == null) {
+                            replyId = 0;
                             screenName = "";
                             imageURL = "";
+                            favorited = false;
                             replyMessage = "今、手が離せなくて。";
                         }
                         Log.d(TAG, "replyMessage: " + replyMessage);
@@ -742,15 +915,13 @@ public class MainActivity extends AppCompatActivity {
                         replyResponseFailed();
                         return null;
                     } finally {
-                        Log.e(TAG, "finally - before");
                         twitterStream.clearListeners();
-                        Log.e(TAG, "finally - after");
                     }
                 }
 
                 @Override
                 protected void onPostExecute(String speech) {
-                    replyResponsed(speech, screenName, imageURL);
+                    replyResponsed(speech, screenName, imageURL, replyId, favorited);
                 }
 
                 private void startWaitingForReply(long followId, final long statusId) {
@@ -761,8 +932,10 @@ public class MainActivity extends AppCompatActivity {
                             if (status.getInReplyToStatusId() == statusId) {
                                 boolean result = true; //HttpUtils.requestToReview(status.getText());
                                 if (result) {
+                                    replyId = status.isFavorited() ? 0 : status.getId();
                                     screenName = status.getUser().getScreenName();
                                     imageURL = status.getUser().getProfileImageURL();
+                                    favorited = status.getFavoriteCount() > 0;
                                     replyMessage = TwitterUtils.parseText(status.getText());
                                     latch.countDown();
                                 }
