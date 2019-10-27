@@ -230,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
         AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         preVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int properVolume = (int) ((float) maxVolume * 0.75); // 最大音量の50%に設定
+        int properVolume = (int) ((float) maxVolume * 0.20); // 最大音量のnn%に設定 default:20% gadget:80%
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, properVolume, 0);
     }
 
@@ -959,6 +959,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private Status searchNotHashtag(String keyword) throws TwitterException {
+            // FIXME なぜかTwitter4Jではto:検索がエラーとなる
             String screenName = TwitterUtils.getScreenName();
             Query searchQuery = new Query()
                     .query("to:" + screenName + " -filter:retweets")
