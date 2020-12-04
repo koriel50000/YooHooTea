@@ -16,7 +16,6 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.PreferenceManager;
@@ -45,7 +44,6 @@ import ai.api.model.AIResponse;
 import ai.kitt.snowboy.AppResCopy;
 import ai.kitt.snowboy.Constants;
 import ai.kitt.snowboy.MsgEnum;
-import ai.kitt.snowboy.audio.AudioDataSaver;
 import ai.kitt.snowboy.audio.RecordingThread;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -106,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
 
         setProperVolume();
         AppResCopy.copyResFromAssetsToSD(this);
-        recordingThread = new RecordingThread(handle, new AudioDataSaver());
+        recordingThread = new RecordingThread(handle);
         recordingThread.startRecording();
     }
 
@@ -230,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
         AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         preVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int properVolume = (int) ((float) maxVolume * 0.20); // 最大音量のnn%に設定 default:20% gadget:80%
+        int properVolume = (int) ((float) maxVolume * 0.20); // 最大音量のnn%に設定 default:20%
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, properVolume, 0);
     }
 

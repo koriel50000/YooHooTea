@@ -1,19 +1,17 @@
 package ai.kitt.snowboy.audio;
 
-import java.io.IOException;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.os.Handler;
+import android.os.Message;
+import android.util.Log;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 import ai.kitt.snowboy.Constants;
 import ai.kitt.snowboy.MsgEnum;
-import android.media.AudioFormat;
-import android.media.AudioRecord;
-import android.media.MediaRecorder;
-import android.media.MediaPlayer;
-import android.os.Handler;
-import android.os.Message;
-import android.util.Log;
-
 import ai.kitt.snowboy.SnowboyDetect;
 
 public class RecordingThread {
@@ -25,7 +23,6 @@ public class RecordingThread {
     private static final String ACTIVE_UMDL = Constants.ACTIVE_UMDL;
     
     private boolean shouldContinue;
-    private AudioDataReceivedListener listener = null;
     private Handler handler = null;
     private Thread thread;
     
@@ -34,21 +31,13 @@ public class RecordingThread {
     private String commonRes = strEnvWorkSpace+ACTIVE_RES;   
     
     private SnowboyDetect detector = new SnowboyDetect(commonRes, activeModel);
-//    private MediaPlayer player = new MediaPlayer();
 
-    public RecordingThread(Handler handler, AudioDataReceivedListener listener) {
+    public RecordingThread(Handler handler) {
         this.handler = handler;
-        this.listener = listener;
 
-        detector.SetSensitivity("0.6"); // default:0.6 gadget:0.48
+        detector.SetSensitivity("0.6"); // default:0.6
         //-detector.SetAudioGain(1);
         detector.ApplyFrontend(true);
-//        try {
-//            player.setDataSource(strEnvWorkSpace+"ding.wav");
-//            player.prepare();
-//        } catch (IOException e) {
-//            Log.e(TAG, "Playing ding sound error", e);
-//        }
     }
 
     private void sendMessage(MsgEnum what, Object obj){
@@ -103,9 +92,6 @@ public class RecordingThread {
             return;
         }
         record.startRecording();
-        if (null != listener) {
-            listener.start();
-        }
         Log.v(TAG, "Start recording");
 
         long shortsRead = 0;
@@ -113,10 +99,6 @@ public class RecordingThread {
         while (shouldContinue) {
             record.read(audioBuffer, 0, audioBuffer.length);
 
-            if (null != listener) {
-                listener.onAudioDataReceived(audioBuffer, audioBuffer.length);
-            }
-            
             // Converts to short array.
             short[] audioData = new short[audioBuffer.length / 2];
             ByteBuffer.wrap(audioBuffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(audioData);
@@ -137,16 +119,12 @@ public class RecordingThread {
             } else if (result > 0) {
                 sendMessage(MsgEnum.MSG_ACTIVE, null);
                 Log.i("Snowboy: ", "Hotword " + Integer.toString(result) + " detected!");
-//                player.start();
             }
         }
 
         record.stop();
         record.release();
 
-        if (null != listener) {
-            listener.stop();
-        }
         Log.v(TAG, String.format("Recording stopped. Samples read: %d", shortsRead));
     }
 }
