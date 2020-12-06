@@ -35,7 +35,13 @@ public class RecordingThread {
     public RecordingThread(Handler handler) {
         this.handler = handler;
 
-        detector.SetSensitivity("0.6"); // default:0.6
+        // Detection sensitivity controls how sensitive the detection is.
+        // It is a value between 0 and 1. Increasing the sensitivity value lead to better detection rate,
+        //  but also higher false alarm rate.
+        // It is an important parameter that you should play with in your actual application.
+        detector.SetSensitivity("0.5"); // default:0.6
+        // Set audio_gain to be larger than 1 if your test recording’s volume is too low,
+        //  or smaller than 1 if too high.
         //-detector.SetAudioGain(1);
         detector.ApplyFrontend(true);
     }
@@ -106,17 +112,23 @@ public class RecordingThread {
             shortsRead += audioData.length;
 
             // Snowboy hotword detection.
+            // https://snowboy.kitt.ai/
             int result = detector.RunDetection(audioData, audioData.length);
 
-            if (result == -2) {
+            // VAD is Voice Activity Detection which usually detects whether there’s human voice in the audio.
+            // It needs much less resources than hotword detection.
+            // Thus, Snowboy uses VAD as a filtering layer before hotword detection to reduce CPU usage.
+            if (result == -2) { // -2: silence
                 // post a higher CPU usage:
                 // sendMessage(MsgEnum.MSG_VAD_NOSPEECH, null);
-            } else if (result == -1) {
+            } else if (result == -1) { // -1: error
                 sendMessage(MsgEnum.MSG_ERROR, "Unknown Detection Error");
-            } else if (result == 0) {
+            } else if (result == 0) { // 0: voice
                 // post a higher CPU usage:
                 // sendMessage(MsgEnum.MSG_VAD_SPEECH, null);
-            } else if (result > 0) {
+            } else if (result > 0) { // 1,..: triggered index
+                // ホットワード検出で録音を停止し、AudioRecordを開放する
+                stopRecording();
                 sendMessage(MsgEnum.MSG_ACTIVE, null);
                 Log.i("Snowboy: ", "Hotword " + Integer.toString(result) + " detected!");
             }

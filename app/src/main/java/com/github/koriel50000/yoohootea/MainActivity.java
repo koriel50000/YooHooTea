@@ -3,6 +3,7 @@ package com.github.koriel50000.yoohootea;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -228,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
         AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         preVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int properVolume = (int) ((float) maxVolume * 0.20); // 最大音量のnn%に設定 default:20%
+        int properVolume = (int) ((float) maxVolume * 0.40); // 最大音量のnn%に設定 default:20%
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, properVolume, 0);
     }
 
@@ -307,20 +308,33 @@ public class MainActivity extends AppCompatActivity {
     private void hotwordDetected() {
         likeHandler.cancel();
 
-        recordingThread.stopRecording();
+        // hotword検出時に停止しているのでここでは不要
+        //recordingThread.stopRecording();
 
         speechTask.startListening();
     }
 
-    private void speechRecognition(String keyword) {
+    private void speechRecognition(final String keyword) {
         String speech = "おーい " + keyword;
         showMessage(myAccount, true, speech);
 
-        tweetTask.execute(speech, keyword);
+        //tweetTask.execute(speech, keyword);
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                tweetResponsed(null, keyword + "ですか？");
+            }
+        }, 2000);
     }
 
     private void speechRecognitionCanceled() {
-        recordingThread.startRecording();
+        // AIServiceがAudioRecordを開放するのを待ってから開始
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                recordingThread.startRecording();
+            }
+        }, 500);
     }
 
     private void speechRecognitionFailed() {
@@ -333,7 +347,8 @@ public class MainActivity extends AppCompatActivity {
         if (statusId != null) {
             replyTask.execute(statusId, keyword);
         } else {
-            String speech = "呼んだ？";
+            //String speech = "呼んだ？";
+            String speech = keyword;
             showMessage(yooHooBot, false, speech);
 
             speechSynthesis(speech);
@@ -511,6 +526,7 @@ public class MainActivity extends AppCompatActivity {
     private static class SoundChanges {
 
         enum State {
+            IDLING,
             CONTINUE,
             NEXT,
             SUFFICIENT,
@@ -531,10 +547,6 @@ public class MainActivity extends AppCompatActivity {
             }
 
             boolean inRange(Queue<Float> levels) {
-                if (levels.size() < WINDOW_SIZE) {
-                    return true;
-                }
-
                 float minmax = Float.NaN;
                 float sum = 0.0f;
                 for (float level : levels) {
@@ -549,7 +561,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 float avg = (sum - minmax) / (levels.size() - 1);
 
-                //Log.d(TAG, "minmax=" + minmax + ", avg=" + avg);
                 if (isSilent) {
                     return avg <= THRESHOLD_LEVEL; // 無音の場合は平均値が閾値以下ならば範囲内
                 } else {
@@ -558,7 +569,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             boolean isSufficient(int timer) {
-                return timer > minTime;
+                return timer >= minTime;
             }
 
             boolean isTimeout(int timer) {
@@ -570,8 +581,9 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        private static final int WINDOW_SIZE = 5;
-        private static final float THRESHOLD_LEVEL = 3.0f;
+        private static final int IDLING_TIME = 6;
+        private static final int WINDOW_SIZE = 4;
+        private static final float THRESHOLD_LEVEL = 2.0f;
 
         private List<Sound> sounds;
 
@@ -579,12 +591,11 @@ public class MainActivity extends AppCompatActivity {
         private Sound current;
         private int index;
         private int timer;
+        private boolean idling;
 
         SoundChanges() {
             sounds = new ArrayList<>();
             levels = new ArrayDeque<>(WINDOW_SIZE);
-            index = 0;
-            timer = 0;
         }
 
         SoundChanges add(boolean isSilent, int minTime, int maxTime) {
@@ -595,7 +606,7 @@ public class MainActivity extends AppCompatActivity {
         void reset() {
             index = 0;
             timer = 0;
-            current = sounds.get(index++);
+            idling = true;
             levels.clear();
         }
 
@@ -603,24 +614,24 @@ public class MainActivity extends AppCompatActivity {
             if (levels.size() == WINDOW_SIZE) {
                 levels.remove();
             } // Javaにサイズ固定キューってなかったっけ？
-            levels.add(Math.abs(level));
+            levels.add(level);
             timer++;
 
-            //Log.d(TAG, levels + ", sound=" + current.isSilent() + ", index=" + index + ", timer=" + timer);
+            if (idling) {
+                if (timer < IDLING_TIME) {
+                    return State.IDLING;
+                }
+                idling = false;
+                current = sounds.get(index++);
+                timer = 0;
+            }
+            Log.d(TAG, levels + ", sound=" + current.isSilent() + ", index=" + index + ", timer=" + timer);
 
             if (current.isTimeout(timer)) {
                 return State.TIMEOUT;
             }
 
-            if (index == sounds.size()) { // 最後の音量変化
-                if (!current.inRange(levels)) {
-                    return State.OUTOFRANGE;
-                } else if (current.isSufficient(timer)) {
-                    return State.SUFFICIENT;
-                } else {
-                    return State.CONTINUE;
-                }
-            } else { // 最後以外の音量変化
+            if (index < sounds.size()) { // 最後以外の音量変化
                 if (current.inRange(levels)) {
                     return State.CONTINUE;
                 } else if (current.isSufficient(timer)) {
@@ -630,44 +641,61 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     return State.OUTOFRANGE;
                 }
+            } else { // 最後の音量変化
+                if (current.isSufficient(timer)) {
+                    return State.SUFFICIENT;
+                } else if (current.inRange(levels)) {
+                    return State.CONTINUE;
+                } else {
+                    return State.OUTOFRANGE;
+                }
             }
+        }
+
+        boolean currentSilent() {
+            return current.isSilent();
         }
     }
 
     private class SpeechTask implements AIListener {
 
         private SoundChanges soundChanges = new SoundChanges()
-                .add(true, 5, 50)
-                .add(false, 5, 100)
-                .add(true, 10, 20);
+                .add(false, 2, 10)
+                .add(true, 3, 80)
+                .add(false, 3, 120)
+                .add(true, 4, 20);
 
         private AIService aiService;
+        private boolean listening;
 
         private SpeechTask(Context context) {
             AIConfiguration config = new AIConfiguration(
                     "6cab6813dc8c416f92c3c2e2b4a7bc27",
                     AIConfiguration.SupportedLanguages.fromLanguageTag("ja"),
                     AIConfiguration.RecognitionEngine.System);
-
             aiService = AIService.getService(context, config);
             aiService.setListener(this);
         }
 
         private void pause() {
-            aiService.pause();
+            //aiService.pause();
+            aiService.stopListening();
+            listening = false;
         }
 
         private void resume() {
-            aiService.resume();
+            //aiService.resume();
         }
 
         private void startListening() {
             aiService.startListening();
             soundChanges.reset();
+            listening = true;
         }
 
         @Override
         public void onResult(AIResponse response) {
+            listening = false;
             speechRecognition(response.getResult().getResolvedQuery());
         }
 
@@ -679,25 +707,35 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onAudioLevel(float level) {
-            //Log.d(TAG, String.format("onAudioLevel: %s", level));
+            if (!listening) {
+                return;
+            }
+            level = level > 0 ? level : 0;
+            Log.d(TAG, String.format("onAudioLevel: %s", level));
 
             switch (soundChanges.level(level)) {
+                case IDLING:
+                    Log.d(TAG,"IDLING:");
+                    break;
                 case CONTINUE:
-                    //Log.d(TAG,"CONTINUE:");
+                    Log.d(TAG,"CONTINUE: " + soundChanges.currentSilent());
                     break;
                 case NEXT:
-                    //Log.d(TAG,"NEXTSTATE:");
+                    Log.d(TAG,"NEXTSTATE:" + soundChanges.currentSilent());
                     break;
                 case SUFFICIENT:
-                    //Log.d(TAG,"SUFFICIENT:");
+                    Log.d(TAG,"SUFFICIENT:");
+                    listening = false;
                     aiService.stopListening();
                     break;
                 case OUTOFRANGE:
-                    //Log.d(TAG,"OUTOFRANGE:");
+                    Log.d(TAG,"OUTOFRANGE:");
+                    listening = false;
                     aiService.cancel();
                     break;
                 case TIMEOUT:
-                    //Log.d(TAG,"TIMEOUT:");
+                    Log.d(TAG,"TIMEOUT:");
+                    listening = false;
                     aiService.cancel();
                     break;
             }
@@ -708,7 +746,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onListeningCanceled() {
-            //Log.d(TAG, "onListeningCanceled");
+            Log.d(TAG, "onListeningCanceled");
             aiService.stopListening(); // FIXME 必要？
             speechRecognitionCanceled();
         }
